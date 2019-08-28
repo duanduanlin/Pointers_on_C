@@ -69,7 +69,5 @@ include ./src/helloworld/helloworld.mk		#取消屏蔽来选择工程
 
 ## 引用
 
-### 链接
-
 [markdown]: doc/Markdown_Reference.md "Markdown Reference"
 

@@ -886,6 +886,5 @@ _   底线
 
 
 
-### 图片链接
+[head]: img/head.jpg "head"
 
-[head]: /doc/img/head.jpg "head"
