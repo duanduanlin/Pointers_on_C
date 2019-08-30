@@ -42,6 +42,7 @@ include ./src/helloworld/helloworld.mk		#取消屏蔽来选择工程
 
 -   [x] [文档撰写之`Markdown`][Markdown]
 -   [ ] [自动化编译之`makefile`][makefile_reference]
+-   [ ] 脚步语言之`bash shell`
 -   [ ] 项目管理之`menuconfig`
 -   [ ] 代码管理之`git`
 -   [ ] 章节1-快速上手
