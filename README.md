@@ -41,7 +41,7 @@ include ./src/helloworld/helloworld.mk		#取消屏蔽来选择工程
 ---
 
 -   [x] [文档撰写之`Markdown`][Markdown]
--   [ ] 自动化编译之`makefile`
+-   [ ] [自动化编译之`makefile`][makefile_reference]
 -   [ ] 项目管理之`menuconfig`
 -   [ ] 代码管理之`git`
 -   [ ] 章节1-快速上手
@@ -71,3 +71,4 @@ include ./src/helloworld/helloworld.mk		#取消屏蔽来选择工程
 
 [markdown]: doc/Markdown_Reference.md "Markdown Reference"
 
+[makefile_reference]: doc/makefile_reference.md "makefile reference"
