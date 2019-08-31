@@ -178,31 +178,354 @@ target...:prerequisites...
 
 其中`target`是目标文件，可以是中间文件，也可以是执行文件，还可以是一个标签。`prerequisites`是依赖文件，也就是要生成`target`所需要的文件。`command`就是生成规则了(shell 命令)。
 
-简单来说，依赖关系就是说明要要生成目标文件需要那些依赖文件，以及生成规则是怎样的。这样`make`工具在执行的时候，只需判断是不是有依赖文件比目标文件新，如果有的话，执行生成规则。而`makefile`中的依赖关系最终会构成一个依赖树，最终的可执行文件依赖一系列的中间文件，而每个中间文件又依赖于对应的一个或多个源文件。还是以上面那个工程为例，其依赖树如下：
+简单来说，依赖关系就是说明要要生成目标文件需要那些依赖文件，以及生成规则是怎样的。这样`make`工具在执行的时候，只需判断是不是有依赖文件比目标文件新，如果有的话，执行生成规则。而`makefile`中的依赖关系最终会构成一个依赖树，最终的可执行文件依赖一系列的中间文件，而每个中间文件又依赖于对应的一个或多个源文件。
 
-![dependent chain][]
+别的不多说，先写个最简单的实例看看效果，然后我们在逐步完善它。首先我们为之前的`example0`写个简单的`makefile`。
 
-如上图所示，`make`工具在检查可执行文件`main`的依赖时，会找到`foo.o`,`bar.o`和`main.o`三个中间文件，而这三个中间文件又分别有自己的依赖，所以最终会找到依赖树的叶子节点，然后进行时间比较，需要的话执行对应规则更新上一节点，以此类推并最终导致根节点更新。
+新建目录`example1`,方便起见，这里直接拷贝`example0`,然后稍作修改，如下：
 
-当然上面这个实例比较简单，只有源文件，而实际工程中会有很多头文件，所以实际的`makefile`规则要复杂些，如下：
+```text
+-./example1
+	-main.c
+	-foo.c
+	-bar.c
+	-makefile
+```
 
-1.  如果这个工程没有编译过，那么我们的所有`C`文件都要编译并链接。
-2.  如果这个工程的某几个`C`文件被修改，那么我们只编译被修改的`C`文件，并链接目标程序。
-3.  如果这个工程的头文件被改变了，那么我们需要编译引用了这几个头文件的`C`文件，并链接程序。
+其中，`makefile`内容如下：
 
-以上就是`makefile`的核心规则了，掌握这些，书写一个能用的`makefile`也就够了，至于其他的像自动推导，伪目标，变量定义等功能都是为了让`make`工具更好用而已。当然了，如果你想更高效的写出稳健的`makefile`，仅仅掌握核心规则是远远不够的。
+```text
+main:main.o foo.o bar.o
+	gcc -o main main.o foo.o bar.o
 
-正所谓万丈高楼拔地起，在正式开始学习之前呢，我们先写个最简单的`makefile`看看效果。在此之前呢，再简单理一下`make`的工作流程。
+main.o:main.c
+	gcc -c main.c -o main.o
 
-1.  首先`make`会去查找`makefile`文件，默认是当前目录下的“Makefile”或“makefile”。
-2.  如果找到，它会找到文件中的第一个目标文件，并把这个文件作为最终的目标文件。
-3.  如果目标文件不存在或者它所依赖的文件比目标新，那么执行对应的规则生成目标。
-4.  如果目标文件的依赖文件存在，那么`make`会去寻找依赖文件所依赖的文件，然后进行时间检查，并决定是否执行对应规则更新依赖文件。
+foo.o:foo.c
+	gcc -c foo.c -o foo.o
 
-下面，我们为之前的`example0`写个简单的`makefile`。
+bar.o:bar.c
+	gcc -c bar.c -o bar.o
+```
+
+首先我们先`make`下，看看效果,然后在一点一点分析它。
+
+```text
+$ make
+gcc -c main.c -o main.o
+main.c: In function ‘main’:
+main.c:12:5: warning: implicit declaration of function ‘foo’; did you mean ‘feof’? [-Wimplicit-function-declaration]
+     foo();
+     ^~~
+     feof
+main.c:13:5: warning: implicit declaration of function ‘bar’ [-Wimplicit-function-declaration]
+     bar();
+     ^~~
+main.c:15:12: warning: ‘return’ with a value, in function returning void
+     return 0;
+            ^
+main.c:10:6: note: declared here
+ void main(int argc,char**argv)
+      ^~~~
+gcc -c foo.c -o foo.o
+gcc -c bar.c -o bar.o
+gcc -o main main.o foo.o bar.o
+
+$ ./main
+enter foo
+enter bar
+```
+
+乍看之下，和之前的`example0`的脚本执行的效果差不多嘛！不过是多了一些`gcc`开头的指令而已，但是一旦编译完成，之后在不对源文件做任何修改的情况下，重复执行`make`：
+
+```text
+$ make
+make: 'main' is up to date.
+```
+
+你会发现，不管你怎么执行都好像并没有编译，而是提示你`main`也就是你的可执行程序已经是最新的了。这个好像已经符合我们的目标了，也就是只编译有修改的文件，至于是不是看下时间戳呗！
+
+```text
+-------第一次make后，文件信息---------
+$ ls -l
+total 28
+-rw-r--r-- 1 duanduanlin duanduanlin  333 Aug 31 22:31 bar.c
+-rw-rw-rw- 1 duanduanlin duanduanlin 1536 Aug 31 23:28 bar.o
+-rw-r--r-- 1 duanduanlin duanduanlin  333 Aug 31 22:31 foo.c
+-rw-rw-rw- 1 duanduanlin duanduanlin 1536 Aug 31 23:28 foo.o
+-rwxrwxrwx 1 duanduanlin duanduanlin 8416 Aug 31 23:28 main
+-rw-r--r-- 1 duanduanlin duanduanlin  362 Aug 31 22:31 main.c
+-rw-rw-rw- 1 duanduanlin duanduanlin 1480 Aug 31 23:28 main.o
+-rw-r--r-- 1 duanduanlin duanduanlin  168 Aug 31 22:31 makefile
+
+---------之后再make时的文件信息-----------
+$ ls -l
+total 28
+-rw-r--r-- 1 duanduanlin duanduanlin  333 Aug 31 22:31 bar.c
+-rw-rw-rw- 1 duanduanlin duanduanlin 1536 Aug 31 23:28 bar.o
+-rw-r--r-- 1 duanduanlin duanduanlin  333 Aug 31 22:31 foo.c
+-rw-rw-rw- 1 duanduanlin duanduanlin 1536 Aug 31 23:28 foo.o
+-rwxrwxrwx 1 duanduanlin duanduanlin 8416 Aug 31 23:28 main
+-rw-r--r-- 1 duanduanlin duanduanlin  362 Aug 31 22:31 main.c
+-rw-rw-rw- 1 duanduanlin duanduanlin 1480 Aug 31 23:28 main.o
+-rw-r--r-- 1 duanduanlin duanduanlin  168 Aug 31 22:31 makefile
+```
+
+可以看到时间戳，并没有变化，说明目的确实实现了。
+
+下面，我们简单分析下`makefile`。
+
+```text
+main:main.o foo.o bar.o
+	gcc -o main main.o foo.o bar.o
+
+main.o:main.c
+	gcc -c main.c -o main.o
+
+foo.o:foo.c
+	gcc -c foo.c -o foo.o
+
+bar.o:bar.c
+	gcc -c bar.c -o bar.o
+```
+
+如上，可以很清晰的看到，这里总共定义了四个依赖关系，以及对应的生成规则。顺便说下哈！`make`工具会把第一个依赖关系中的第一个目标当作最终目标，也就是这里的可执行程序`main`。根据依赖关系，可以知道，想要生成`main`,需要三个中间文件，`main.o` ,`foo.o`和 `bar.o`(注意这个顺序哦)。而每个`.o`又分别依赖于对应的`.c`文件。所以最终目标的依赖关系树如下：
+
+![chain][]
+
+结合上图，我们先看看在你在命令行输入`make`时，`make`都干了什么。`make`工具首先会从当前文件下查找`makefile`或`Makefile`,如果找到了，就会载入此`makefile`,然后获取文件中的第一个依赖关系的第一个目标，并把它作为最终目标；然后会检查最终可执行`main`是否存在，如果不存在，那么直接执行生成规则，但如果此时`main`所依赖的文件也不存在，那么就要先生成它，而如果此时依赖文件存在，就要先检查依赖文件是不是比源文件要旧，如果是，先更新依赖文件；如果最终目标存在，那么接着依次检查`main`所依赖的文件(这里是`main.o` ,`foo.o`和 `bar.o`)是否存在，同样如果不存在，那么先执行`.o`文件的生成规则生成所需要的依赖文件；如果`.o`文件也存在的话，就会去检查`.o`文件的依赖关系，如果`.o`文件比对应的源文件旧，那么就去执行`.o`文件的生成规则去重新生成`.o`文件；当所有`main`所依赖的文件都检查完后，`make`再去判断是否需要执行`main`的生成规则去更新最终目标文件。
+
+以上就是`make`程序的大致执行流程了，下面我们针对上面的流程做些实验。
 
 
+
+#### 实验1-查找`makefile`
+
+我们在`example1`的基础上,建立`example1_test1`,并修改`makefile`文件名为`Makefile`,然后`make`下：
+
+```text
+$ make
+gcc -c main.c -o main.o
+...中间信息省略...
+gcc -c foo.c -o foo.o
+gcc -c bar.c -o bar.o
+gcc -o main main.o foo.o bar.o
+```
+
+可以看到，是可以做正常编译的。下面在改成`GNUmakefile`试试，可以发现一样可以。然后在改成`my_makefile`试试：
+
+```text
+$ make
+make: *** No targets specified and no makefile found.  Stop.
+```
+
+可以看到，`make`出错了，而且提示我们没找到`makefile`。下面试试给`make`带个参数，指定要查找的文件,先试下-f：
+
+```text
+$ make -f my_makefile
+gcc -c main.c -o main.o
+...中间信息省略...
+gcc -c foo.c -o foo.o
+gcc -c bar.c -o bar.o
+gcc -o main main.o foo.o bar.o
+```
+
+没毛病，此外输入`make --file=my_makefile`可以实现一样的效果。
+
+结论：
+
+1.  执行`make`命令时，`make`工具会默认查找当前目录下的`makefile`或`Makefile`或`GNUmakefile`文件。
+2.  可以通过设置,-f或--file=来指定要查找的`makefile`文件。
+
+
+
+#### 实验2-`make`的最终目标
+
+同样拷贝`example1`到`example1_test2`,并修改`makefile`文件，如下：
+
+```text
+foo.o:foo.c
+	gcc -c foo.c -o foo.o
+
+main:main.o foo.o bar.o
+	gcc -o main main.o foo.o bar.o
+
+main.o:main.c
+	gcc -c main.c -o main.o
+
+bar.o:bar.c
+	gcc -c bar.c -o bar.o
+```
+
+然后`make`下:
+
+```text
+$ make
+gcc -c foo.c -o foo.o
+```
+
+可以看到，`make`仅仅只编译生成`foo.o`结束了,再试试首个依赖有多个目标的会怎样？修改`makefile`如下：
+
+```text
+first foo.o:foo.c
+	gcc -c foo.c -o $@
+
+main:main.o foo.o bar.o
+	gcc -o main main.o foo.o bar.o
+
+main.o:main.c
+	gcc -c main.c -o main.o
+
+bar.o:bar.c
+	gcc -c bar.c -o bar.o
+```
+
+为了更好的演示多目标的效果，上面第二行，我使用了自动变量`$@`,自动变量会在后面讲，这里可以简单的把第一个依赖关系用下面的关系替换：
+
+```text
+first:foo.c
+	gcc -c foo.c -o first
+	
+foo.o:foo.c
+	gcc -c foo.c -o foo.o
+```
+
+然后执行`make`,记得先把之前生成的`.o`文件删掉：
+
+```test
+$ make
+gcc -c foo.c -o first
+
+$ ls
+bar.c  first  foo.c  main.c  makefile
+```
+
+你会发现，`make`在生成`first`就结束了。这是因为`make`把`first`当作最终目标，而一旦最终目标生成，`make`也就结束了。
+
+结论：
+
+1.  `make`会把`makefile`文件中的第一个依赖关系的第一个目标作为最终目标。
+2.  一旦最终目标生成，`make`就结束了。
+
+
+
+#### 实验3-最终目标的生成过程
+
+拷贝`example1`到`example1_test3`。`makefile`如下：
+
+```text
+main:main.o foo.o bar.o
+	gcc -o main main.o foo.o bar.o
+
+main.o:main.c
+	gcc -c main.c -o main.o
+
+foo.o:foo.c
+	gcc -c foo.c -o foo.o
+
+bar.o:bar.c
+	gcc -c bar.c -o bar.o
+```
+
+先`make`下：
+
+```text
+$ make
+gcc -c main.c -o main.o
+...中间信息省略...
+gcc -c foo.c -o foo.o
+gcc -c bar.c -o bar.o
+gcc -o main main.o foo.o bar.o
+```
+
+删除最终目标`main`，然后再`make`试试：
+
+	$ make
+	gcc -o main main.o foo.o bar.o
+可以看到，`make`直接链接生成目标文件了。这是符合预期的，因为最终目标不存在，且中间目标不但存在而且不用更新。
+
+然后删除`foo.o`,再`make`试试,此时预计会先生成`foo.o`,然后链接程序:
+
+```text
+$ make
+gcc -c foo.c -o foo.o
+gcc -o main main.o foo.o bar.o
+```
+
+可以看到，结果完全符合预期。这时，最终目标存在，而且仅有一个中间目标需要重新生成(因为不存在)，所以只需先生成缺少的中间目标，之后因为有一个中间目标比最终目标新，导致最终目标也会重新生成。
+
+下面修改`foo.c`内容如下：
+
+```text
+#include<stdio.h>
+
+void foo()
+{
+    printf("enter foo\r\n");
+    printf("leave foo\r\n");
+}
+```
+
+然后编译并执行：
+
+```text
+$ make
+gcc -c foo.c -o foo.o
+gcc -o main main.o foo.o bar.o
+
+$ ./main
+enter foo
+leave foo
+enter bar
+```
+
+此时，最终文件存在和中间文件都存在，且只有一个中间文件比对应源文件旧，所以只需更新此中间文件，然后链接程序即可。
+
+还记得，首次编译时，中间文件的生成顺序吗？是不是和目标文件的依赖顺序很像。下面修改下依赖顺序试试：
+
+```text
+$ cat makefile
+main:foo.o bar.o main.o
+	gcc -o main main.o foo.o bar.o
+
+main.o:main.c
+	gcc -c main.c -o main.o
+
+foo.o:foo.c
+	gcc -c foo.c -o foo.o
+
+bar.o:bar.c
+	gcc -c bar.c -o bar.o
+```
+
+编译结果如下：
+
+```text
+$ make
+gcc -c foo.c -o foo.o
+gcc -c bar.c -o bar.o
+gcc -c main.c -o main.o
+...中间信息省略...
+gcc -o main main.o foo.o bar.o
+```
+
+如上，反复实验后可以看到，中间程序的生成顺序是和最终文件的依赖顺序是一致的。这说明，**`makefile`的执行顺序是基于依赖链顺序的**。这个很重要，因为这样的话，就可以通过修改依赖链顺序来决定源文件编译的顺序了。
+
+总结：
+
+1.  `make`在生成目标文件时，会首先检查最终文件是否存在
+2.  如果最终目标不存在，那么就去检查依赖是不是要更新(依赖文件不存在，或者依赖文件比较旧)，然后决定是直接使用现有依赖文件生成最终文件，还是更新依赖文件后在生成最终文件。
+3.  如果目标文件存在，一样要去检查依赖文件是不是要更新，之后再判断是不是要重新生成目标文件。
+4.  `makefile`的执行顺序是基于依赖链顺序的。
+
+
+
+目前为止，我们已经对``makefile`的依赖关系有了个初步的了解，而这正是`makefile`的核心，其他的规则和语法都不过是对此规则的扩充，目的只是为了让`make`工具更好用而已。而且值得注意的是`make`工具并不会管你的生成规则是怎样的，它只会关注目标文件和依赖之间的新旧关系，并决定是不是要执行规则，所以`make`不仅仅只是`C`的编译工具，而是更像一种代码编译通用的方法，可以很容易的套用到其他语言上。所以，`make`工具研究一个也就够了，一通百通嘛！
+
+与此同时，我们对`make`工具的执行流程也有了个大致的了解，这是`make`工具的主线。要知道不管`makefile`写的有多复杂，主线是基本不变的。
+
+后面，我会从最基本的`makefile`开始，一点一点的完善它的功能，在此过程中会穿插`makefile`的常用规则和语法，并最终给出一个比较专业的`makefile`实例。
 
 ## 参考
 
-[dependent chain]: img/dependent_chain.png
+[chain]: img/dependent_chain.png
