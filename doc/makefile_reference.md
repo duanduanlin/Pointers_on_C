@@ -484,7 +484,6 @@ enter bar
 还记得，首次编译时，中间文件的生成顺序吗？是不是和目标文件的依赖顺序很像。下面修改下依赖顺序试试：
 
 ```text
-$ cat makefile
 main:foo.o bar.o main.o
 	gcc -o main main.o foo.o bar.o
 
@@ -525,6 +524,777 @@ gcc -o main main.o foo.o bar.o
 与此同时，我们对`make`工具的执行流程也有了个大致的了解，这是`make`工具的主线。要知道不管`makefile`写的有多复杂，主线是基本不变的。
 
 后面，我会从最基本的`makefile`开始，一点一点的完善它的功能，在此过程中会穿插`makefile`的常用规则和语法，并最终给出一个比较专业的`makefile`实例。
+
+
+
+## `makefile`编写方法
+
+这篇文章的目的是为了记录我在学习`makefile`过程中所积累的东西，最终目标是为了给出一个比较专业的`makefile`模板，以便在其他项目中使用。所以计划是从最简单的`makefile`开始，逐步完善，并在这个过程中对一些新的东西进行展开讨论。所以，这节内容开始前，先把上节接触到的新东西补充下。
+
+
+
+### 补充材料-`make`选项
+
+还记得，之前指定`make`要查找的文件时，使用的`-f`和`--file=`吗？这是`make`工具的参数，下面看看常用的选项都有哪些：
+
+1.  `-b`或`-m`,忽略其他版本`make`的兼容性。
+2.  `-B`或`–-always-make`，重编译。
+3.  `-C`或`--directory=`,指定读取`makefile`的目录。
+4.  `--debug[=]`或`-d`(`--debug=a`),输出`make`的调试信息，有以下几种级别可选，默认输出最简单信息。
+    -   `a`--输出所有调试信息。
+    -   `b`--输出简单调试信息。
+    -   `v`--输出`b`级之上的信息。
+    -   `i`--输出隐式规则(`implicit`)。
+    -   `j`--输出执行规则中命令的详细信息。
+    -   `m`--输出操作`makefile`时的信息
+5.  `-e`或`--environment-overrides`,指明环境变量中的值覆盖`makefile`中的值
+6.  `-f`或`--file=`或`--makefile=`,指定需要执行的`makefile`。
+7.  `-h`或`--help`,显示帮助信息。
+8.  `-i`或`--ignore-errors`,执行时忽略错误。
+9.  `-I`或`--include-dir=`,指定包含`makefile`的搜索目录。
+10.  `-j`或`--jobs[=]`，指定同时运行命令的数目。默认尽可能多的运行
+11.  `-k`或`--keep-going`,出错也不停止运行。
+12.  `-l`或`--load-average[=]`或`--max-load[=]`,指定`make`运行的负载。
+13.  `-n`或`--just-print`或`--dry-run`或`--recon`,仅输出执行命令序列，但并不执行。
+14.  `-o`或`--old-file=`或`--assume-old=`，指定不重新生成的目标。
+15.  `-p`或`--print-data-base`，输出`makefile`中的所有数据，包括所有规则和变量。
+16.  `-q`或`--question`，仅检查目标是否要更新，如果是0说明要更新，2说明有错误
+17.  `-r`或`--no-builtin-variabes`，禁止使用变量上的隐式规则。
+18.  `-s`或`--silent`或`--quiet`,在运行命令时不输出命令的输出
+19.  `-S`或`--no-keep-going`或`--stop`，取消`-k`选项，一般用在`make`的选项是继承来的，而你又不想要。
+20.  `-t`或`--toch`，把目标修改日期变为最新的，也就是阻止生成目标。
+21.  `-v`或`--version`，输出`make`版本。
+22.  `-w`或`--print-directory`，跟踪`makefile`。
+23.  `--no-print-directory`，禁止`-w`选项。
+24.  `-W`或`--what-if=`或`--new-file`或`--assume-file=`,假定目标需要更新。
+25.  `--warn-undefined-variables`,只要`make`发现未定义变量，那么给出警告。
+
+
+
+下面测试下以上参数，首先拷贝`example1`到`example2`。
+
+先看下`make`版本：
+
+```text
+$ make -v
+GNU Make 4.1
+Built for x86_64-pc-linux-gnu
+Copyright (C) 1988-2014 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+```
+
+可以看到，我这里的版本是`4.1`的.下面试下`-b`或`-m`:
+
+```text
+$ make -b
+gcc -c main.c -o main.o
+main.c: In function ‘main’:
+main.c:12:5: warning: implicit declaration of function ‘foo’; did you mean ‘feof’? [-Wimplicit-function-declaration]
+     foo();
+     ^~~
+     feof
+main.c:13:5: warning: implicit declaration of function ‘bar’ [-Wimplicit-function-declaration]
+     bar();
+     ^~~
+main.c:15:12: warning: ‘return’ with a value, in function returning void
+     return 0;
+            ^
+main.c:10:6: note: declared here
+ void main(int argc,char**argv)
+      ^~~~
+gcc -c foo.c -o foo.o
+gcc -c bar.c -o bar.o
+gcc -o main main.o foo.o bar.o
+```
+
+好像看不出什么区别。下面试试`-B`：
+
+```text
+$ make -B
+gcc -c main.c -o main.o
+main.c: In function ‘main’:
+main.c:12:5: warning: implicit declaration of function ‘foo’; did you mean ‘feof’? [-Wimplicit-function-declaration]
+     foo();
+     ^~~
+     feof
+main.c:13:5: warning: implicit declaration of function ‘bar’ [-Wimplicit-function-declaration]
+     bar();
+     ^~~
+main.c:15:12: warning: ‘return’ with a value, in function returning void
+     return 0;
+            ^
+main.c:10:6: note: declared here
+ void main(int argc,char**argv)
+      ^~~~
+gcc -c foo.c -o foo.o
+gcc -c bar.c -o bar.o
+gcc -o main main.o foo.o bar.o
+```
+
+可以看到，不管我之前是不是编译过了，`make -B`仍然会重新编译。
+
+下面，退到`example2`的上级目录，试下`-C`:
+
+```text
+$ make -C example2
+make: Entering directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2'
+gcc -c main.c -o main.o
+main.c: In function ‘main’:
+main.c:12:5: warning: implicit declaration of function ‘foo’; did you mean ‘feof’? [-Wimplicit-function-declaration]
+     foo();
+     ^~~
+     feof
+main.c:13:5: warning: implicit declaration of function ‘bar’ [-Wimplicit-function-declaration]
+     bar();
+     ^~~
+main.c:15:12: warning: ‘return’ with a value, in function returning void
+     return 0;
+            ^
+main.c:10:6: note: declared here
+ void main(int argc,char**argv)
+      ^~~~
+gcc -c foo.c -o foo.o
+gcc -c bar.c -o bar.o
+gcc -o main main.o foo.o bar.o
+make: Leaving directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2'
+```
+
+是不是和直接在`example2`目录下执行`make`没什么区别，而且`make`会在执行前后告诉我要进入`XXX`目录以及离开`XXX`目录了。这个一般用在在一个`makefile`中执行另一个`makefile`。
+
+下面看看`--debug[=]`，先试下默认的：
+
+```
+$ make --debug
+GNU Make 4.1
+Built for x86_64-pc-linux-gnu
+Copyright (C) 1988-2014 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+Reading makefiles...
+Updating goal targets....
+ File 'main' does not exist.
+   File 'main.o' does not exist.
+  Must remake target 'main.o'.
+gcc -c main.c -o main.o
+main.c: In function ‘main’:
+main.c:12:5: warning: implicit declaration of function ‘foo’; did you mean ‘feof’? [-Wimplicit-function-declaration]
+     foo();
+     ^~~
+     feof
+main.c:13:5: warning: implicit declaration of function ‘bar’ [-Wimplicit-function-declaration]
+     bar();
+     ^~~
+main.c:15:12: warning: ‘return’ with a value, in function returning void
+     return 0;
+            ^
+main.c:10:6: note: declared here
+ void main(int argc,char**argv)
+      ^~~~
+  Successfully remade target file 'main.o'.
+   File 'foo.o' does not exist.
+  Must remake target 'foo.o'.
+gcc -c foo.c -o foo.o
+  Successfully remade target file 'foo.o'.
+   File 'bar.o' does not exist.
+  Must remake target 'bar.o'.
+gcc -c bar.c -o bar.o
+  Successfully remade target file 'bar.o'.
+Must remake target 'main'.
+gcc -o main main.o foo.o bar.o
+Successfully remade target file 'main'.
+```
+
+这个就比较有意思了，你会看到`make`的执行流程是不是就在调试信息里啊(看到这里，不知道你有没有一种想看到`GNU make`源码的冲动，就是想看看是不是和我想的一样)！为了加深下印象，我再把上一节的实验3，在加上`--debug`:
+
+最终目标不存在：
+
+```text
+$ rm main
+$ make --debug
+...
+Reading makefiles...
+Updating goal targets....
+ File 'main' does not exist.
+Must remake target 'main'.
+gcc -o main main.o foo.o bar.o
+Successfully remade target file 'main'.
+```
+
+某个依赖文件不存在：
+
+```text
+$ rm foo.o
+$ make --debug
+...
+Reading makefiles...
+Updating goal targets....
+   File 'foo.o' does not exist.
+  Must remake target 'foo.o'.
+gcc -c foo.c -o foo.o
+  Successfully remade target file 'foo.o'.
+ Prerequisite 'foo.o' is newer than target 'main'.
+Must remake target 'main'.
+gcc -o main main.o foo.o bar.o
+Successfully remade target file 'main'.
+```
+
+某个依赖需要更新:
+
+```text
+$ touch foo.c
+$ make --debug
+...
+Reading makefiles...
+Updating goal targets....
+   Prerequisite 'foo.c' is newer than target 'foo.o'.
+  Must remake target 'foo.o'.
+gcc -c foo.c -o foo.o
+  Successfully remade target file 'foo.o'.
+ Prerequisite 'foo.o' is newer than target 'main'.
+Must remake target 'main'.
+gcc -o main main.o foo.o bar.o
+Successfully remade target file 'main'.
+```
+
+下面试试，`--debug=a`,(⊙﹏⊙)结果我就不全列出来了，因为实在是太多了。下面就简单列下一些关键性的信息吧！
+
+```text
+Reading makefiles...
+Reading makefile 'makefile'...
+Updating makefiles....
+ Considering target file 'makefile'.
+  Looking for a XXX
+  ...
+ No need to remake target 'makefile'.
+```
+
+这是第一块信息，是在导入和读取`makefile`。看信息的话，感觉`make`是把`makefile`也当作了一个目标，然后去查找其上的规则，虽然不知道，它是怎么做的，但从信息上看到了隐式规则和静态规则。
+
+`makefile`读取完成后，会先获取最终目标：
+
+```text
+Updating goal targets....
+...
+Successfully remade target file 'main'.
+```
+
+之后,`make`会把最终目标当作执行目标，去查找规则和判断是不是要更新最终目标，直到最终得到最终目标，退出程序。
+
+```text
+Considering target file 'main'.
+ File 'main' does not exist.
+  Considering target file 'main.o'.
+   File 'main.o' does not exist.
+    Considering target file 'main.c'.
+    Looking for XXX
+    ...
+    No need to remake target 'main.c'.
+   Finished prerequisites of target file 'main.o'.
+  Must remake target 'main.o'.
+gcc -c main.c -o main.o
+...
+Successfully remade target file 'main.o'.
+```
+
+这个地方，可以明显看到`make`在生成目标文件时的执行流程，是严格按着依赖链去检查，直到找到叶子节点，并判断是不是有更新，然后执行更新，之后逐级返回,直到生成目标。
+
+之后就是重复上面目标生成的流程了,直到最终目标的所有依赖全部检查完毕：
+
+```text
+  Considering target file 'foo.o'.
+  ...
+  Successfully remade target file 'foo.o'.
+  Considering target file 'bar.o'.
+  ...
+  Successfully remade target file 'bar.o'.
+ Finished prerequisites of target file 'main'.
+```
+
+最后，再判断是不是要重新生成最终目标:
+
+```text
+Must remake target 'main'.
+gcc -o main main.o foo.o bar.o
+Successfully remade target file 'main'.
+```
+
+好了，`--debug=a`基本就这些了，看完后是不是感觉对`make`工具又有了更深的了解呢！反正我看完后有种强烈的冲动想要看看源码去验证是不是和自己想的一样(我也是第一次看哦)。
+
+下面继续，试试`--debug=b`，可以看到这就是`--debug`的功能，就不列出来了。下面看下`--debug=v`:
+
+```text
+$ make --debug=v
+...
+Reading makefiles...
+Reading makefile 'makefile'...
+Updating goal targets....
+Considering target file 'main'.
+ File 'main' does not exist.
+  Considering target file 'main.o'.
+   File 'main.o' does not exist.
+    Considering target file 'main.c'.
+     Finished prerequisites of target file 'main.c'.
+    No need to remake target 'main.c'.
+   Finished prerequisites of target file 'main.o'.
+  Must remake target 'main.o'.
+gcc -c main.c -o main.o
+...
+  Successfully remade target file 'main.o'.
+  Considering target file 'foo.o'.
+   File 'foo.o' does not exist.
+    Considering target file 'foo.c'.
+     Finished prerequisites of target file 'foo.c'.
+    No need to remake target 'foo.c'.
+   Finished prerequisites of target file 'foo.o'.
+  Must remake target 'foo.o'.
+gcc -c foo.c -o foo.o
+  Successfully remade target file 'foo.o'.
+  Considering target file 'bar.o'.
+   File 'bar.o' does not exist.
+    Considering target file 'bar.c'.
+     Finished prerequisites of target file 'bar.c'.
+    No need to remake target 'bar.c'.
+   Finished prerequisites of target file 'bar.o'.
+  Must remake target 'bar.o'.
+gcc -c bar.c -o bar.o
+  Successfully remade target file 'bar.o'.
+ Finished prerequisites of target file 'main'.
+Must remake target 'main'.
+gcc -o main main.o foo.o bar.o
+Successfully remade target file 'main'.
+```
+
+这个应该是比较全面，同时也比较整洁的`make`执行流程了(看到这里，感觉自己对程序的调试信息有了些新的感悟，一个设计良好的调试信息，真的是一种艺术啊)。
+
+继续，下面试试`--debug=i`,(⊙﹏⊙)让我想起了被`--debug=a`支配的恐惧。不过看起来，`make`在检查目标要不要更新前，是先查找并替特殊规则啊！后面讲到这些特殊规则时可以看看，`make`具体都做了什么。
+
+好，继续，`--debug=j`:
+
+```text
+$ make --debug=j
+gcc -c main.c -o main.o
+Putting child 0x7fffcc14bed0 (main.o) PID 774 on the chain.
+Live child 0x7fffcc14bed0 (main.o) PID 774
+...
+Reaping winning child 0x7fffcc14bed0 PID 774
+Removing child 0x7fffcc14bed0 PID 774 from chain.
+gcc -c foo.c -o foo.o
+Putting child 0x7fffcc14a9b0 (foo.o) PID 777 on the chain.
+Live child 0x7fffcc14a9b0 (foo.o) PID 777
+Reaping winning child 0x7fffcc14a9b0 PID 777
+Removing child 0x7fffcc14a9b0 PID 777 from chain.
+gcc -c bar.c -o bar.o
+Putting child 0x7fffcc14b1f0 (bar.o) PID 780 on the chain.
+Live child 0x7fffcc14b1f0 (bar.o) PID 780
+Reaping winning child 0x7fffcc14b1f0 PID 780
+Removing child 0x7fffcc14b1f0 PID 780 from chain.
+gcc -o main main.o foo.o bar.o
+Putting child 0x7fffcc14db20 (main) PID 783 on the chain.
+Live child 0x7fffcc14db20 (main) PID 783
+Reaping winning child 0x7fffcc14db20 PID 783
+Removing child 0x7fffcc14db20 PID 783 from chain.
+```
+
+╰(*°▽°*)╯，好像发现了什么不得了的东西，`make`是开了多线程来执行目标的生成规则的。我记得好像有个`-j`的参数可以指定同时运行多少个规则，后面可以试试。
+
+最后一个`--debug=m`,好像看不出来有什么变化，这样我们引用别的`makefile`试试，先在上级目录从`expamle2`拷贝一份到`example2_test0`,然后在`example2_test0`目录下增加`obj.mk`,内容如下：
+
+```text
+main.o:main.c
+	gcc -c main.c -o main.o
+
+foo.o:foo.c
+	gcc -c foo.c -o foo.o
+
+bar.o:bar.c
+	gcc -c bar.c -o bar.o
+```
+
+然后修改`makefile`:
+
+```text
+main:main.o foo.o bar.o
+	gcc -o main main.o foo.o bar.o
+
+include ./obj.mk
+```
+
+还是看不出来(╯＾╰),我还就不信了┗|｀O′|┛。`make -d`试下：
+
+```
+Reading makefiles...
+Reading makefile 'makefile'...
+Reading makefile 'obj.mk' (search path) (no ~ expansion)...
+Updating makefiles....
+```
+
+终于看到了，(^o^)哇(^0^)哈(^○^)哈~~~
+
+但是`--debug=m`现象不是很明显，试试在`makefile`中执行`makefile`会怎样？先修改`makefile`:
+
+```text
+$ cat makefile
+
+build:
+	$(MAKE) -f build.mk
+```
+
+修改，`obj.mk`为`build.mk`并修改其内容：
+
+```text
+$ cat build.mk
+
+main:main.o foo.o bar.o
+	gcc -o main main.o foo.o bar.o
+
+main.o:main.c
+	gcc -c main.c -o main.o
+
+foo.o:foo.c
+	gcc -c foo.c -o foo.o
+
+bar.o:bar.c
+	gcc -c bar.c -o bar.o
+```
+
+再试试，(ˉ▽ˉ；)...还是看不出来，不过我又详细对比了，`--debug=m`和`--debug`,发现区别只是多了一行:`Updating makefiles....`，难道这就是`--debug=m`的效果吗？
+
+好吧！下面，看看`-f`的效果(`-e`等到讲变量时在看看效果)。
+
+因为前面`-f`讲过好多次了，这里只是试试参数的传递：
+
+```text
+$ make -f=build.mk
+make: =build.mk: No such file or directory
+make: *** No rule to make target '=build.mk'.  Stop.
+
+$ make -f= build.mk
+make: =: No such file or directory
+make: *** No rule to make target '='.  Stop.
+
+$ make -fbuild.mk
+make: 'main' is up to date.
+
+$ make -f   build.mk
+make: 'main' is up to date.
+
+$ make -f   build.mk test.mk
+make: Nothing to be done for 'test.mk'.
+```
+
+可以看到传参时，短式写法`-f`是把字符`f`后的字符去掉前置空格，当作参数，也试了传递多个参数，不过没有成功，应该是只能传入一个`makefile`。
+
+```text
+$ make --file=build.mk
+make: 'main' is up to date.
+
+$ make --file build.mk
+make: 'main' is up to date.
+
+$ make --filebuild.mk
+make: unrecognized option '--filebuild.mk'
+```
+
+而长式写法`--file`则需要一个分隔符，可以是`=`也可以是空格。
+
+为了统一起见，避免混乱，不管长式还是短式写法，一律用空格分隔参数。
+
+下面试试`-h`,可以看到比较全的选项信息:
+
+```text
+$ make -h
+Usage: make [options] [target] ...
+Options:
+  -b, -m                      Ignored for compatibility.
+  -B, --always-make           Unconditionally make all targets.
+  -C DIRECTORY, --directory=DIRECTORY
+                              Change to DIRECTORY before doing anything.
+  -d                          Print lots of debugging information.
+  --debug[=FLAGS]             Print various types of debugging information.
+  -e, --environment-overrides
+                              Environment variables override makefiles.
+  --eval=STRING               Evaluate STRING as a makefile statement.
+  -f FILE, --file=FILE, --makefile=FILE
+                              Read FILE as a makefile.
+  -h, --help                  Print this message and exit.
+  -i, --ignore-errors         Ignore errors from recipes.
+  -I DIRECTORY, --include-dir=DIRECTORY
+                              Search DIRECTORY for included makefiles.
+  -j [N], --jobs[=N]          Allow N jobs at once; infinite jobs with no arg.
+  -k, --keep-going            Keep going when some targets can't be made.
+  -l [N], --load-average[=N], --max-load[=N]
+                              Don't start multiple jobs unless load is below N.
+  -L, --check-symlink-times   Use the latest mtime between symlinks and target.
+  -n, --just-print, --dry-run, --recon
+                              Don't actually run any recipe; just print them.
+  -o FILE, --old-file=FILE, --assume-old=FILE
+                              Consider FILE to be very old and don't remake it.
+  -O[TYPE], --output-sync[=TYPE]
+                              Synchronize output of parallel jobs by TYPE.
+  -p, --print-data-base       Print make's internal database.
+  -q, --question              Run no recipe; exit status says if up to date.
+  -r, --no-builtin-rules      Disable the built-in implicit rules.
+  -R, --no-builtin-variables  Disable the built-in variable settings.
+  -s, --silent, --quiet       Don't echo recipes.
+  -S, --no-keep-going, --stop
+                              Turns off -k.
+  -t, --touch                 Touch targets instead of remaking them.
+  --trace                     Print tracing information.
+  -v, --version               Print the version number of make and exit.
+  -w, --print-directory       Print the current directory.
+  --no-print-directory        Turn off -w, even if it was turned on implicitly.
+  -W FILE, --what-if=FILE, --new-file=FILE, --assume-new=FILE
+                              Consider FILE to be infinitely new.
+  --warn-undefined-variables  Warn when an undefined variable is referenced.
+
+This program built for x86_64-pc-linux-gnu
+Report bugs to <bug-make@gnu.org>
+```
+
+下面试下`-i`选项(方便起见，回到`example2`目录下)：
+
+```text
+$ make -i
+gcc -c main.c -o main.o
+...
+gcc -c foo.c -o foo.o
+gcc -c bar.c -o bar.o
+gcc -o main main.o foo.o bar.o
+```
+
+好像看不到什么区别，我们先改下`makefile`,让`make`出错试下。
+
+把下面这两行：
+
+```text
+main:main.o foo.o bar.o
+	gcc -o main main.o foo.o bar.o
+```
+
+改成：
+
+```text
+main:main.o fo.o bar.o
+	gcc -o main main.o fo.o bar.o
+```
+
+我们把`main`所依赖的`foo.o`改成`fo.o`，这样就会找不到依赖而出错。先`make --debug=v`看下，这样对`make`的执行流程有什么影响：
+
+```text
+Considering target file 'fo.o'.
+   File 'fo.o' does not exist.
+   Finished prerequisites of target file 'fo.o'.
+  Must remake target 'fo.o'.
+make: *** No rule to make target 'fo.o', needed by 'main'.  Stop.
+```
+
+可以看到，`make`在检查`fo.o`的时候，发现`fo.o`并不存在，所以尝试生成它，但又没有找到`fo.o`的生成方法，所以出错了。下面我们再试试从别处拷贝一个`fo.o`试试：
+
+```text
+ Considering target file 'fo.o'.
+   Finished prerequisites of target file 'fo.o'.
+  No need to remake target 'fo.o'.
+```
+
+可以看到，已经可以正常编译了。而且从调试信息上，可以看到，`make`在找到`fo.o`之后就不在往下找了，因为`fo.o`并没有依赖与谁。从这里可以看到，`make`真的不会管目标是什么，目标是怎么得到的，它只会关注，能不能找到目标，有没有依赖(也就是没找到怎么办？)，如果有依赖的话，要不要更新。而这里，之前是没找到目标`fo.o`,而且也没给出目标依赖谁，所以`make`就不知道该怎么办了，现在是找到目标了，而且目标没有依赖，那就可以结束了啊。
+
+好，下面，我们继续测试`-i`,给`fo.o`改个名字吧，先别删，以防后面会用，就叫`fo.obj`吧！然后`make -i`试下：
+
+```text
+$ make -i
+gcc -c main.c -o main.o
+main.c: In function ‘main’:
+...
+make: *** No rule to make target 'fo.o', needed by 'main'.  Stop.
+```
+
+可以看到，并不是我们想看到的结果，`make`并没有继续，而是里面停止了。这说明`-i`不是忽略`makefile`本身的错误。
+
+下面看看是不是执行指令的错误，修改`makefile`(记得先复原下`makefile`)。
+
+把下面这行
+
+```text
+	gcc -c main.c -0 main.o
+```
+
+改成:
+
+```text
+	gcc -c main.c -0 main.o
+```
+
+这样，`gcc`执行时，会有参数错误。
+
+还是先`--debug=v`下：
+
+```text
+gcc -c main.c -0 main.o
+gcc: error: main.o: No such file or directory
+gcc: error: unrecognized command line option ‘-0’
+makefile:5: recipe for target 'main.o' failed
+make: *** [main.o] Error 1
+```
+
+可以看到，`make`在执行生成目标文件时出错了。此时`make`停止运行，并告诉你我是在`[main.o]`这个目标里出错的。
+
+下面试试，`make -i`会怎样：
+
+```text
+$ make -i
+gcc -c main.c -0 main.o
+gcc: error: main.o: No such file or directory
+gcc: error: unrecognized command line option ‘-0’
+makefile:5: recipe for target 'main.o' failed
+make: [main.o] Error 1 (ignored)
+gcc -c foo.c -o foo.o
+gcc -c bar.c -o bar.o
+gcc -o main main.o foo.o bar.o
+gcc: error: main.o: No such file or directory
+makefile:2: recipe for target 'main' failed
+make: [main] Error 1 (ignored)
+```
+
+(●ˇ∀ˇ●)可以看到，`make`发现了两处错误，第一处是在执行`main.o`生成规则时出错，第二处是在最终目标生成时出错。此外`make`是正常执行完了，而且可以看下当前目录下的文件：
+
+```text
+$ ls
+bar.c  bar.o  fo.obj  foo.c  foo.o  main.c  makefile
+```
+
+发现除了，`main.o`和`main`其他中间文件是不是都正常生成了。这说明，当使用`-i`选项时，`make`会忽略的是执行生成`xxx`的指令时的错误，继续执行，但依赖于`XXX`的目标并不会被更新。
+
+下面看看，`-I`,方便起见，还是先从`example2`拷贝到`example2_test_I`。
+
+然后改下`example2_test_I`的目录结构，如下：
+
+```text
+./example2_test_I
+	-src
+		-main.c
+		-foo.c
+		-bar.c
+	makefile
+```
+
+老规矩先`make --debug=v`下看看,是在哪里出错的：
+
+```text
+Considering target file 'main'.
+ File 'main' does not exist.
+  Considering target file 'main.o'.
+   File 'main.o' does not exist.
+    Considering target file 'main.c'.
+     File 'main.c' does not exist.
+     Finished prerequisites of target file 'main.c'.
+    Must remake target 'main.c'.
+make: *** No rule to make target 'main.c', needed by 'main.o'.  Stop.
+```
+
+可以看到，`make`在查找`main.c`的时候，没有找到，之后又找了下`main.c`的依赖也没找到，就出错了。现在是不是感觉`make`的查找规则更清晰了呢？总结下哈！
+
+1.  `make`在检查目标时，总是先看看目标存不存在，如果不存在的话，就去看看有没有依赖可以生成目标，如何目标不存在有没有依赖，那对不起，我不玩了。如果目标不催在但有办法可以生成目标，那么直接生成目标。
+2.  如果目标存在，那就去看看目标有没有依赖，如果有，那就检查下要不要更新依赖，如果没有依赖，那更好，直接返回。
+
+好，言归正传，看看增加`-I`时，发生了什么：
+
+```text
+$ make -I src
+make: *** No rule to make target 'main.c', needed by 'main.o'.  Stop.
+```
+
+(⊙﹏⊙)好像和我想得不一样。。。
+
+`-I`是指定`makefile`的目录，好那就再增加一个`src/src.mk`，内容如下：
+
+```text
+main:main.o foo.o bar.o
+	gcc -o main main.o foo.o bar.o
+
+main.o:main.c
+	gcc -c main.c -0 main.o
+
+foo.o:foo.c
+	gcc -c foo.c -o foo.o
+
+bar.o:bar.c
+	gcc -c bar.c -o bar.o
+```
+
+然后修改下`./makefile`:
+
+```text
+
+include src.mk
+```
+
+然后先`make --debug=v`试下：
+
+```text
+Reading makefiles...
+Reading makefile 'makefile'...
+Reading makefile 'src.mk' (search path) (no ~ expansion)...
+makefile:2: src.mk: No such file or directory
+make: *** No rule to make target 'src.mk'.  Stop.
+```
+
+可以看到，出错了。另外需要注意的是，`make`是在尝试生成`src.mk`的时候，发现没有方法可用才出错的。这说明什么呢？这说明`make`是支持自动生成`.mk`的(是不是很激动呢？对于我这种懒癌晚期的人来说，如果能自动生成，那真是太棒了！)。这个会在后面自动生成依赖时讲(没错，你没有看错，依赖是可以自动生成的)。
+
+好的，我们回来，(ಥ _ ಥ)终于回来了。
+
+```text
+Reading makefiles...
+Reading makefile 'makefile'...
+Reading makefile 'src.mk' (search path) (no ~ expansion)...
+Updating goal targets....
+Considering target file 'main'.
+ File 'main' does not exist.
+  Considering target file 'main.o'.
+   File 'main.o' does not exist.
+    Considering target file 'main.c'.
+     File 'main.c' does not exist.
+     Finished prerequisites of target file 'main.c'.
+    Must remake target 'main.c'.
+make: *** No rule to make target 'main.c', needed by 'main.o'.  Stop.
+```
+
+可以看到，虽然`src.mk`可以正常读取了，但还是不对/(ㄒoㄒ)/~~
+
+看下问什么哈！`make`告诉我们，找不到`main.c`的生成规则，这说明什么呢？再看一这个实例的目录结构。
+
+```text
+./example2_test_I
+	-src
+		-main.c
+		-foo.c
+		-bar.c
+		-src.mk
+	makefile
+```
+
+可以看到`main.c`是在`src`目录下且和`src.mk`是在同级目录。而`makefile`是在`main.c`的上级目录。我们在`makefile`中导入了`src.mk`,并使用`-I`选项告诉`make`如果在当前目录下，找不到`src.mk`，就去`src`目录试试。这样是可以找到`src.mk`了，也成功导入了，但执行时，`make`却找不到`main.c`。这说明，`include`指令只是简单把目标文件的内容展开到当前位置中(想一想`C`中的`include`)。但`make`再检查目标时，还是会在当前目录下检查。所以，只需改下目录结构就可以了。
+
+新的目录结构如下：
+
+```text
+./example2_test_I
+	-src
+		-src.mk
+	-main.c
+	-foo.c
+	-bar.c
+	makefile
+```
+
+不容易啊！终于好了。这个`-I`感觉可以用在`makefile`的嵌套执行上，只要在`makefile`执行`makefile`时指定目录，要执行的`makefile`中如果需要其他`makefile`，就不用写路径了，会方便些，特别时路径可能会变，比如自动生成的`makefile`。当然这时，也可以用变量保存路径，但总没有什么都不管直接`include`要好，而且这样的话还有个好处，就是便于移植。这也是一种抽象吧！按我的理解，抽象就是**只做该你做的事，其他的，谁让你做的找谁**。
+
+`(～ o ～)~zZ`今天先这样吧！
+
+
+
 
 ## 参考
 
