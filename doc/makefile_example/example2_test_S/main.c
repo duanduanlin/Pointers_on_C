@@ -9,7 +9,6 @@
 
 void main(int argc,char**argv)
 {
-    printf("enter main\r\n");
     foo();
     bar();
 

@@ -661,7 +661,7 @@ gcc -o main main.o foo.o bar.o
 make: Leaving directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2'
 ```
 
-是不是和直接在`example2`目录下执行`make`没什么区别，而且`make`会在执行前后告诉我要进入`XXX`目录以及离开`XXX`目录了。这个一般用在在一个`makefile`中执行另一个`makefile`。
+是不是和直接在`example2`目录下执行`make`没什么区别，而且`make`会在执行前后告诉我要进入`XXX`目录以及离开`XXX`目录了。这个一般用在在一个`makefile`中执行另一个`makefile`(后期补充：而且是临时切换`make`的当前目录到指定目录)。
 
 下面看看`--debug[=]`，先试下默认的：
 
@@ -962,7 +962,80 @@ bar.o:bar.c
 
 再试试，(ˉ▽ˉ；)...还是看不出来，不过我又详细对比了，`--debug=m`和`--debug`,发现区别只是多了一行:`Updating makefiles....`，难道这就是`--debug=m`的效果吗？
 
-好吧！下面，看看`-f`的效果(`-e`等到讲变量时在看看效果)。
+好吧！下面，看看`-e`的效果。
+
+新建`example2_test_e`,并增加`test_e.mk`，`test_export.mk`和`makefile`，其中`makefile`内容如下：
+
+```text
+
+param = hello
+
+export param
+
+run:
+	@echo "in makefile param = "$(param)
+    $(MAKE) -f test_export.mk
+    $(MAKE) -f test_e.mk
+```
+
+简单讲下这里干了什么哈！主要是为小白准备的，因为好多内容都没讲到。本来是准备把`-e`放到参数传递时讲的，后来想了想补充材料挺多的，所以就想单独抽出来作为一篇文章，考虑到文章的完整性，还是决定放在这里吧！
+
+好吧，言归正传，这里只做了三件事吧！第一行是定义了一个变量叫`param`其值为`hello`;第三行，是导出`param`到环境变量，这样其他的`makefile`可以访问到它(类似于`C`中的全局变量)；第五行定义了一个特殊的依赖关系，也就是目标的依赖为空，而且整个`makefile`只有这一个依赖关系，所以它是个最终目标。通过之前关于`make`执行流程，我们知道`make`执行时，会先检查最终目标存不存在，这里也一样，不过因为其依赖为空，所以有些特殊。我们来看下，如果`run`不存在，会怎样？最终目标不存在，`make`会直接执行生成规则，并在执行前检查依赖是不是要更新，但这里没有依赖，所以直接执行规则。如果`run`存在，那么,`make`会去检查依赖是不是要更新，同样因为没有依赖，所以啥也不干。所以总结起来就是，**目标的依赖为空时，且目标作为`make`的目标，如果此时目标不存在，那么必然要执行其生成规则，反之，必然不会执行规则**。后面第六行，可以不用管他的细节，只要知道它会输出一段文字和`param`的值到控制台。
+
+那么这里就很清晰了，当你在命令行下输入`make`时，`make`也做了三件时，第一声明一个变量并导出到环境变量，之后执行`run`的生成规则，也就是输出一段文字，然后执行`test_e.mk`和`test_export.mk`。
+
+然后我们在看看，`test_e.mk`里有些什么：
+
+```text
+
+param = world
+
+test:
+	@echo "in test.mk param = "$(param)
+```
+
+`test_e.mk`主要做了两件事，第一声明一个变量，也叫`param`,不过其值为`world`。然后简单输出一段包含`param`值的文字。
+
+然后是`test_export.mk`：
+
+```text
+test_export:
+	@echo "param in test_export.mk = "&(param)
+```
+
+和之前`test_e.mk`类似，不过这里没有定义变量。
+
+好，我们先`make`下，看看效果怎样：
+
+```text
+$ make
+in makefile param = hello
+make -f test_export.mk
+make[1]: Entering directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_e'
+param in test_export.mk = hello
+make[1]: Leaving directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_e'
+make -f test_e.mk
+make[1]: Entering directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_e'
+in test.mk param = world
+make[1]: Leaving directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_e'
+```
+
+可以看到，首先，我们在`makefile`中定义了一个变量`param`值为`hello`,并把它导出，然后我们在`test_export.mk`中直接引用`param`可以看到，其值还是`hello`。最后，我们在`test_e.mk`也定义了一个`param`，其值为`world`。尽管此时全局的值为`hello`，但默认下`make`并不会用环境变量的值覆盖`makefile`中的变量。如果想要使用环境变量覆盖`makefile`中的变量的话，可以使用`-e`,如下：
+
+```text
+$ make -e
+in makefile param = hello
+make -f test_export.mk
+make[1]: Entering directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_e'
+param in test_export.mk = hello
+make[1]: Leaving directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_e'
+make -f test_e.mk
+make[1]: Entering directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_e'
+in test.mk param = hello
+make[1]: Leaving directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_e'
+```
+
+
 
 因为前面`-f`讲过好多次了，这里只是试试参数的传递：
 
@@ -1293,8 +1366,739 @@ make: *** No rule to make target 'main.c', needed by 'main.o'.  Stop.
 
 `(～ o ～)~zZ`今天先这样吧！
 
+好的，下面接着昨天的继续，看看`-j`,还记得之前`--debug=j`吗？通过观察调试信息，我们发现，`make`在每次执行规则时，都会开启一个线程，那这样的话，是不是可以同时处理多条规则呢？其实是可以的，`-j`参数就是干这个的(当然前提是你系统得支持，必然`MS-DOS`就不支持)。
+
+`-j`后面啥也不带，也即是尽可能多的运行命令：
+
+```text
+$ make --debug=j -j
+gcc -c main.c -o main.o
+Putting child 0x7fffcd0e8ed0 (main.o) PID 6161 on the chain.
+Live child 0x7fffcd0e8ed0 (main.o) PID 6161
+Reaping winning child 0x7fffcd0e8ed0 PID 6161
+Removing child 0x7fffcd0e8ed0 PID 6161 from chain.
+gcc -o main main.o foo.o bar.o
+Putting child 0x7fffcd0eb560 (main) PID 6164 on the chain.
+Live child 0x7fffcd0eb560 (main) PID 6164
+Reaping winning child 0x7fffcd0eb560 PID 6164
+Removing child 0x7fffcd0eb560 PID 6164 from chain.
+```
+
+速度上，可能文件比较少，感觉不是太明显，但是执行流程上就比较明显了。之前不加`-j`是一个线程执行完才会执行下一个会有明显的卡顿，但加了`-j`之后，好像线程间完全没有顺序了。
+
+下面我们试下`-j1`,感觉和默认差不多。好了，别的就不多试了，条件允许的话，尽量编译时都加上`-j`选项吧！效率要高很多。
+
+下面看看`-k`，`--keep-going`,还记得之前的`-i`吗？`-i`会忽略执行规则时的错误，而且如果此错误导致生成目标失败，那么依赖于此目标的目标并不会更新。但`-i`并无法忽略检查依赖时遇到的错误。同样的，我们也从这两个方面探讨下，`-k`的作用。
+
+首先，我们先看看依赖错误，方便起见还是拷贝`example2`到`example2_test_k`,然后修改`makefile`如下。
+
+将下面一行：
+
+```text
+main:main.o foo.o bar.o
+```
+修改为：
+```text
+main:main.o fo.o bar.o
+```
+
+然后，`make`下：
+
+```text
+$ make
+gcc -c main.c -o main.o
+make: *** No rule to make target 'fo.o', needed by 'main'.  Stop.
+```
+
+显然，`make`找不到`fo.o`,停止运行。下面试试加上`-k`:
+
+```text
+$ make -k
+gcc -c main.c -o main.o
+...
+make: *** No rule to make target 'fo.o', needed by 'main'.
+gcc -c bar.c -o bar.o
+make: Target 'main' not remade because of errors.
+```
+
+加了`-k`后，可以看到，虽然`make`检查`fo.o`时遇到了错误，但还是把剩下的依赖检查完了，只是没有更新最终目标而已。
+
+下面再试试，`-k`在遇到指令执行错误会怎样？
+
+方便起见，拷贝`makefile`到`test_k.mk`,并修改。
+
+将下面这两行：
+
+```text
+main:main.o fo.o bar.o
+...
+	gcc -c main.c -o main.o
+```
+
+修改为：
+
+```text
+main:main.o foo.o bar.o
+...
+	gcc -0 main.c -o main.o
+```
+
+然后，`make -f test_k.mk -k`试下：
+
+```text
+$ make -f test_k.mk -k
+gcc -0 main.c -o main.o
+gcc: error: unrecognized command line option ‘-0’
+test_k.mk:5: recipe for target 'main.o' failed
+make: *** [main.o] Error 1
+gcc -c foo.c -o foo.o
+gcc -c bar.c -o bar.o
+make: Target 'main' not remade because of errors.
+```
+
+可以看到，效果和`-i`一样，`make`会忽略，执行错误，继续执行，并且同样不会更新依赖目标。
+
+所以，`-k`可以看作为高级版的`-i`，它即会忽略执行错误，又会忽略`makefile`本身错误，而且同样不会根据错误的依赖生成目标。
+
+下面看看`-n`,它会仅输出执行过程，但并不会执行。
+
+进入`example2`目录，并执行`make -n`:
+
+```text
+$ make -n
+gcc -c main.c -o main.o
+gcc -c foo.c -o foo.o
+gcc -c bar.c -o bar.o
+gcc -o main main.o foo.o bar.o
+```
+
+可以看到，调试信息上，好像和正常执行没什么区别，只是少了些警告。但正因为它少了些警告，就可以判定，它确实没执行。我们也可以，`ls`下，看下当前目录下的文件变了没：
+
+```text
+$ ls
+bar.c  fo.obj  foo.c  main.c  makefile
+```
+
+可以看到，并没有生成任何文件。而这就是`-n`的效果，它只会输出执行命令，但并不会执行。这个一般常用于调试`makefile`，看看其执行流程是不是符合预期。
+
+`-o`选项。我们先试试在一个未编译过的目录下直接`make -o`会怎样：
+
+```text
+$ make -o
+make: option requires an argument -- 'o'
+```
+
+嗯，他提示我需要个参数。那就给他个参数呗！我们把最终目标作为参数传给他：
+
+```text
+$ make -o main
+make: 'main' is up to date.
+
+$ ls
+bar.c  fo.obj  foo.c  main.c  makefile
+```
+
+这个比较有意思，明明我目录下都不存在`main`，`make`却提示我，`main`已经是最新的了。这说明，`-o file` 就是告诉`make`关于`file`你就不用检查了，他已经是新的了。
+
+下面看看`-p`:
+
+(⊙﹏⊙)，信息太多了，不列了，这个选项主要是，把执行当前`makefile`时，环境中的所有变量和规则全部输出。
 
 
+
+下面看看一个比较有意思的`-q`，先看下说明：不运行命令也不输出，仅仅检查指定目标是不是要更新。
+
+```text
+$ make -q
+```
+
+好像啥也看不到，因为它只会返回一个状态，0表示要更新，2表示错误。我不知道其他控制台是怎样的，不过我的会在我执行后，在命令提示符后多了一个下面这样的标志。
+
+```text
+C:1
+```
+
+这应该表示，不需要更新吧！不过又有点奇怪，我的目录是一个没编译过的，它却告诉我不需要更新。然后发现它可以带参数，加了参数试试，还是一样。有点搞不懂。
+
+算了，下面试试`-s`,先看下效果吧：
+
+```text
+$ make -s
+main.c: In function ‘main’:
+main.c:12:5: warning: implicit declaration of function ‘foo’; did you mean ‘feof’? [-Wimplicit-function-declaration]
+     foo();
+     ^~~
+     feof
+main.c:13:5: warning: implicit declaration of function ‘bar’ [-Wimplicit-function-declaration]
+     bar();
+     ^~~
+main.c:15:12: warning: ‘return’ with a value, in function returning void
+     return 0;
+            ^
+main.c:10:6: note: declared here
+ void main(int argc,char**argv)
+```
+
+可以看到`-s`屏蔽命令执行的输出。如果你觉得命令信息太多了，不便于调试的话，可以`-s`下，这样就可以专注于代码调试了(是这样吗？我编的使用场景哦)。
+
+还有，用于取消`-k`效果的`-S`。因为`make`嵌套执行时会默认从环境变量中继承些选项和参数，如果你不想要的话，你可以在`make`时明确取消它。
+
+试下吧！还是先拷贝`example2_test`到`example2_test_S`,然后增加一个`build.mk`,内容如下：
+
+```text
+main:main.o fo.o bar.o
+	gcc -o main main.o foo.o bar.o
+
+main.o:main.c
+	gcc -c main.c -o main.o
+
+foo.o:foo.c
+	gcc -c foo.c -o foo.o
+
+bar.o:bar.c
+	gcc -c bar.c -o bar.o
+```
+
+可以看到，默认情况下`make`在检查`main`的依赖时会因找不到`fo.o`而停止。同时，修改`makefile`,在里面调用`build.mk`。
+
+```text
+$ cat makefile
+build:
+	$(MAKE) -f build.mk
+```
+
+先试下效果：
+
+```text
+$ make
+make -f build.mk
+make[1]: Entering directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_S'
+gcc -c main.c -o main.o
+main.c: In function ‘main’:
+main.c:12:5: warning: implicit declaration of function ‘foo’; did you mean ‘feof’? [-Wimplicit-function-declaration]
+     foo();
+     ^~~
+     feof
+main.c:13:5: warning: implicit declaration of function ‘bar’ [-Wimplicit-function-declaration]
+     bar();
+     ^~~
+main.c:15:12: warning: ‘return’ with a value, in function returning void
+     return 0;
+            ^
+main.c:10:6: note: declared here
+ void main(int argc,char**argv)
+      ^~~~
+make[1]: *** No rule to make target 'fo.o', needed by 'main'.  Stop.
+make[1]: Leaving directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_S'
+makefile:2: recipe for target 'build' failed
+make: *** [build] Error 2
+```
+
+可以看到效果完全符合预期，然后，我们在最外层调用`make`时传入`-k`选项：
+
+```text
+$ make -k
+make -f build.mk
+make[1]: Entering directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_S'
+gcc -c main.c -o main.o
+main.c: In function ‘main’:
+main.c:12:5: warning: implicit declaration of function ‘foo’; did you mean ‘feof’? [-Wimplicit-function-declaration]
+     foo();
+     ^~~
+     feof
+main.c:13:5: warning: implicit declaration of function ‘bar’ [-Wimplicit-function-declaration]
+     bar();
+     ^~~
+main.c:15:12: warning: ‘return’ with a value, in function returning void
+     return 0;
+            ^
+main.c:10:6: note: declared here
+ void main(int argc,char**argv)
+      ^~~~
+make[1]: *** No rule to make target 'fo.o', needed by 'main'.
+gcc -c bar.c -o bar.o
+make[1]: Target 'main' not remade because of errors.
+make[1]: Leaving directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_S'
+makefile:2: recipe for target 'build' failed
+make: *** [build] Error 2
+```
+
+我们可以看到，虽然`make`出错了，但是仍然继续执行了，这说明，我们在命令行调用`makefile`时传入的选项，被我们在`makefile`中调用的`build.mk`时继承了(关于参数继承，我会在后面递归调用时讲)。
+
+下面，修改`makefile`,增加`-S`选项，如下：
+
+```text
+build:
+	$(MAKE) -S -f build.mk
+```
+
+再试试：
+
+```text
+$ make -k
+make -S -f build.mk
+make[1]: Entering directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_S'
+gcc -c main.c -o main.o
+main.c: In function ‘main’:
+main.c:12:5: warning: implicit declaration of function ‘foo’; did you mean ‘feof’? [-Wimplicit-function-declaration]
+     foo();
+     ^~~
+     feof
+main.c:13:5: warning: implicit declaration of function ‘bar’ [-Wimplicit-function-declaration]
+     bar();
+     ^~~
+main.c:15:12: warning: ‘return’ with a value, in function returning void
+     return 0;
+            ^
+main.c:10:6: note: declared here
+ void main(int argc,char**argv)
+      ^~~~
+make[1]: *** No rule to make target 'fo.o', needed by 'main'.  Stop.
+make[1]: Leaving directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_S'
+makefile:2: recipe for target 'build' failed
+make: *** [build] Error 2
+```
+
+可以看到，结果和不加`-k`没什么区别。
+
+`-t`,这个和`-o`有点像。都是阻止目标更新，我们看看两者有什么区别，先试试干净的目录：
+
+```text
+$ make -t main
+touch main.o
+touch foo.o
+touch bar.o
+touch main
+```
+
+感觉是根据依赖链，把所有需要更新的文件全部`touch`一遍。这个和`-o`有很大的不同，`-o`比较文雅，是直接告诉`make`和谁谁谁相关的文件你都不用检查了，而`-t`是十分粗暴的，把所有需要更新的全部手动`touch`一遍。
+
+很好奇，加个调试看看，`-t`到底干了什么：
+
+```text
+$ make --debug=v -t
+GNU Make 4.1
+Built for x86_64-pc-linux-gnu
+Copyright (C) 1988-2014 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+Reading makefiles...
+Reading makefile 'makefile'...
+Updating goal targets....
+Considering target file 'main'.
+ File 'main' does not exist.
+  Considering target file 'main.o'.
+   File 'main.o' does not exist.
+    Considering target file 'main.c'.
+     Finished prerequisites of target file 'main.c'.
+    No need to remake target 'main.c'.
+   Finished prerequisites of target file 'main.o'.
+  Must remake target 'main.o'.
+touch main.o
+  Successfully remade target file 'main.o'.
+  Considering target file 'foo.o'.
+   File 'foo.o' does not exist.
+    Considering target file 'foo.c'.
+     Finished prerequisites of target file 'foo.c'.
+    No need to remake target 'foo.c'.
+   Finished prerequisites of target file 'foo.o'.
+  Must remake target 'foo.o'.
+touch foo.o
+  Successfully remade target file 'foo.o'.
+  Considering target file 'bar.o'.
+   File 'bar.o' does not exist.
+    Considering target file 'bar.c'.
+     Finished prerequisites of target file 'bar.c'.
+    No need to remake target 'bar.c'.
+   Finished prerequisites of target file 'bar.o'.
+  Must remake target 'bar.o'.
+touch bar.o
+  Successfully remade target file 'bar.o'.
+ Finished prerequisites of target file 'main'.
+Must remake target 'main'.
+touch main
+Successfully remade target file 'main'.
+```
+
+果然简单粗暴，`-t`只是直接用`touch`替换了生成指令而已，相当于更新文件的时间戳。可以在看看之后，正常编译会怎样：
+
+```text
+$ make
+make: 'main' is up to date.
+```
+
+它会提示你文件已更新，当然了手动更新的。所以，`-t`只是利用`make`通过检查时间戳来判断是不是要更新文件，即通过手动更新来阻止规则生成。
+
+下面看看`-o`:
+
+```text
+$ make --debug=v -o main
+GNU Make 4.1
+Built for x86_64-pc-linux-gnu
+Copyright (C) 1988-2014 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+Reading makefiles...
+Reading makefile 'makefile'...
+Updating goal targets....
+Considering target file 'main'.
+File 'main' was considered already.
+make: 'main' is up to date.
+```
+
+同样在看下正常编译：
+
+```text
+$ make
+gcc -c main.c -o main.o
+main.c: In function ‘main’:
+main.c:12:5: warning: implicit declaration of function ‘foo’; did you mean ‘feof’? [-Wimplicit-function-declaration]
+     foo();
+     ^~~
+     feof
+main.c:13:5: warning: implicit declaration of function ‘bar’ [-Wimplicit-function-declaration]
+     bar();
+     ^~~
+main.c:15:12: warning: ‘return’ with a value, in function returning void
+     return 0;
+            ^
+main.c:10:6: note: declared here
+ void main(int argc,char**argv)
+      ^~~~
+gcc -c foo.c -o foo.o
+gcc -c bar.c -o bar.o
+gcc -o main main.o foo.o bar.o
+```
+
+可以看到，虽然`-o`直接从源头阻止了检查，但只是零时阻止一次，下次如果不加`-o`的话，还是会检查。
+
+所以`-t`的优点就很明显了。因为有时候，对于一些文件，你并不想马上更新它，而且又不想每次都用`-o`去忽略他，这样就可以`-t`一下，强行更新时间戳，一劳永逸。
+
+下一个，`-w`,这个感觉和`--debug=m`很像啊！不过之前测试时发现`--debug=m`效果并不明显，下面看看`-w`怎么样：
+
+方便起见，我们直接拷贝`example2_test_S`到`example2_test_w`,并修复其中的错误，而且为了效果更好，我们把`build.mk`修改为`build/makefile`，同时对应修改`makefile`。
+
+```text
+$ make
+make: 'build' is up to date.
+```
+
+(⊙﹏⊙)出现了一个非常奇怪的事情，我们来分析下为什么哈！
+
+首先列下我的当前目录结构：
+
+```text
+./
+	-build
+		-makefile
+	-bar.c
+	-main.c
+	-foo.c
+	-makefile
+```
+
+然后我们看看`./makefile`里面做了什么：
+
+```text
+$ cat makefile
+build:
+	$(MAKE) -C  build
+```
+
+可以看到，我们定义了一个依赖为空的目标，并把它作为最终目标。回忆一下，之前说过的依赖为空的目标的原则，如果目标不存在，那么必然执行命令，如果目标存在，那么必然不执行。再看看我们的目录结构，刚好有个目录叫`build`,所以对`make`来说，它发现目标存在后，就直接退出了，它并不会管你目标是什么，或者是怎样得到的。对于这种问题，有两种办法，第一改个文件名或改个目标名。不过作为专业人士(自封的，不接受反驳)，我不建议这么做，因为`make`本身支持一些内置规则，用来应对这种情况。也就是伪目标，所谓伪目标就是告诉`make`,这个目标是个假的，你就不用费劲去检查依赖了，直接执行指令吧！语法如下：
+
+```text
+.PHONY: targets
+targets : prerequisites
+	command
+```
+
+可以看到，伪目标其实是把你的目标作为依赖传给了`.PHONY`(这是一个内置参数，我会在[补充资料-内置参数][material_builtin-para]里讲解)，这样`make`就知道那些目标是伪目标了。
+
+好了，这里我们把`build`目标设置为伪目标：
+
+```text
+.PHONY: build
+build:
+	$(MAKE) -C build
+```
+
+然后再`make`下：
+
+```text
+$ make
+make -C build
+make[1]: Entering directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_w/build'
+make[1]: *** No rule to make target 'main.c', needed by 'main.o'.  Stop.
+make[1]: Leaving directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_w/build'
+makefile:4: recipe for target 'build' failed
+make: *** [build] Error 2
+```
+
+(o_O???)什么情况，再分析下哈(好像又发现了什么有趣的东西，好激动啊！)！
+
+`make`提示我，在执行`./build/makefile`时，找不到`main.c`。这说明什么？这说明不同于`make -f`指定要搜索的`makefile`,`make -C`是直接把当前目录切换过去了！！！下面修改目录结构如下：
+
+```text
+./
+	-build
+		-makefile
+		-bar.c
+		-main.c
+		-foo.c
+	-makefile
+```
+
+然后再试下：
+
+```text
+$ make
+make -C build
+make[1]: Entering directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_w/build'
+gcc -c main.c -o main.o
+main.c: In function ‘main’:
+main.c:12:5: warning: implicit declaration of function ‘foo’; did you mean ‘feof’? [-Wimplicit-function-declaration]
+     foo();
+     ^~~
+     feof
+main.c:13:5: warning: implicit declaration of function ‘bar’ [-Wimplicit-function-declaration]
+     bar();
+     ^~~
+main.c:15:12: warning: ‘return’ with a value, in function returning void
+     return 0;
+            ^
+main.c:10:6: note: declared here
+ void main(int argc,char**argv)
+      ^~~~
+gcc -c foo.c -o foo.o
+gcc -c bar.c -o bar.o
+gcc -o main main.o foo.o bar.o
+make[1]: Leaving directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_w/build'
+```
+
+可以看到现在可以正常编译了，而且`ls`下，可以看到，生成的中间文件和可执行文件也全在`build`下，这说明`make`在执行`make -C build`时相当于是先执行`cd build`,然后在`make`。当然之后也会切回来。
+
+哦呼！！！好吧！继续，这里也可以加上调试，看下`make`对伪目标做了什么：
+
+```text
+Reading makefiles...
+Reading makefile 'makefile'...
+Updating goal targets....
+Considering target file 'build'.
+ File 'build' does not exist.
+ Finished prerequisites of target file 'build'.
+Must remake target 'build'.
+make -C build
+```
+
+好像和`-o`的效果类似，直接告诉`make`忽略检查`build`，不过这里还是重新生成了，试下吧，先把伪目标删掉，然后`make -o build`:
+
+```text
+Considering target file 'build'.
+File 'build' was considered already.
+make: 'build' is up to date.
+```
+
+不对，(⊙﹏⊙)，`-o`的话根本就不会检查。而对于依赖为空的目标，要执行命令的前提是目标不存在。也就是要先检查，发现目标不存在，然后尝试生成目标，因为依赖不存在所以省掉依赖检查，从而导致直接执行指令的效果。而`-o`压根就不会检查目标是不是存在。
+
+然后我们加上`-w`试下：
+
+```text
+$ make -w
+make: Entering directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_w'
+make -C  build
+make[1]: Entering directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_w/build'
+make[1]: *** No rule to make target 'main.c', needed by 'main.o'.  Stop.
+make[1]: Leaving directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_w/build'
+makefile:4: recipe for target 'build' failed
+make: *** [build] Error 2
+make: Leaving directory '/home/duanduanlin/workspace/Pointers_on_C/doc/makefile_example/example2_test_w'
+```
+
+对比不加`-w`的效果，可以看到，区别只是，加了`-w`的话，每次运行`makefile`都会显示前后信息。还有，不加`-w`好像也显示了部分信息，那是因为`-C`选项会默认带上`-w`。同样这个选项也是会继承的，如果想要取消的话，可以加上`--no-print-directory`。
+
+哦呼！最后一个`-W`，和`-t`类似，也是假定目标要更新，不过如果配合`-n`使用，就会仅显示运行的指令，但不做任何修改。
+
+同样，我们直接在`example2`目录下执行`make -W`:
+
+```text
+$ make -W
+make: option requires an argument -- 'W'
+Usage: make [options] [target] ...
+```
+
+发现，它报错了，提示我需要个参数，拿给它个参数。
+
+```text
+$ make -W main
+gcc -c main.c -o main.o
+main.c: In function ‘main’:
+main.c:12:5: warning: implicit declaration of function ‘foo’; did you mean ‘feof’? [-Wimplicit-function-declaration]
+     foo();
+     ^~~
+     feof
+main.c:13:5: warning: implicit declaration of function ‘bar’ [-Wimplicit-function-declaration]
+     bar();
+     ^~~
+main.c:15:12: warning: ‘return’ with a value, in function returning void
+     return 0;
+            ^
+main.c:10:6: note: declared here
+ void main(int argc,char**argv)
+      ^~~~
+gcc -c foo.c -o foo.o
+gcc -c bar.c -o bar.o
+```
+
+好像，和`-t`不太一样，最起码对于一个干净的目录来说是这样的。`-t`是直接`touch`一个文件就好了，这里好像是真的全部生成了文件。这里说明下啊，`touch`时，如果文件不存在则新建文件，如果文件存在则更新时间戳。
+
+进一步加上调试看下，`-W`到底做了什么？
+
+```text
+$ make --debug=v -W main
+GNU Make 4.1
+Built for x86_64-pc-linux-gnu
+Copyright (C) 1988-2014 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+Reading makefiles...
+Reading makefile 'makefile'...
+Updating goal targets....
+Considering target file 'main'.
+  Considering target file 'main.o'.
+   File 'main.o' does not exist.
+    Considering target file 'main.c'.
+     Finished prerequisites of target file 'main.c'.
+    No need to remake target 'main.c'.
+   Finished prerequisites of target file 'main.o'.
+  Must remake target 'main.o'.
+gcc -c main.c -o main.o
+main.c: In function ‘main’:
+main.c:12:5: warning: implicit declaration of function ‘foo’; did you mean ‘feof’? [-Wimplicit-function-declaration]
+     foo();
+     ^~~
+     feof
+main.c:13:5: warning: implicit declaration of function ‘bar’ [-Wimplicit-function-declaration]
+     bar();
+     ^~~
+main.c:15:12: warning: ‘return’ with a value, in function returning void
+     return 0;
+            ^
+main.c:10:6: note: declared here
+ void main(int argc,char**argv)
+      ^~~~
+  Successfully remade target file 'main.o'.
+  Considering target file 'foo.o'.
+   File 'foo.o' does not exist.
+    Considering target file 'foo.c'.
+     Finished prerequisites of target file 'foo.c'.
+    No need to remake target 'foo.c'.
+   Finished prerequisites of target file 'foo.o'.
+  Must remake target 'foo.o'.
+gcc -c foo.c -o foo.o
+  Successfully remade target file 'foo.o'.
+  Considering target file 'bar.o'.
+   File 'bar.o' does not exist.
+    Considering target file 'bar.c'.
+     Finished prerequisites of target file 'bar.c'.
+    No need to remake target 'bar.c'.
+   Finished prerequisites of target file 'bar.o'.
+  Must remake target 'bar.o'.
+gcc -c bar.c -o bar.o
+  Successfully remade target file 'bar.o'.
+ Finished prerequisites of target file 'main'.
+ Prerequisite 'main.o' is newer than target 'main'.
+ Prerequisite 'foo.o' is newer than target 'main'.
+ Prerequisite 'bar.o' is newer than target 'main'.
+No need to remake target 'main'.
+```
+
+通过调试信息可以看到，`-W`是把所有需要更新的依赖全部更新了，但唯独没有更新指定文件`main`。
+
+为了确定下，我们在执行一次看看：
+
+```text
+$ make --debug=v -W main
+GNU Make 4.1
+Built for x86_64-pc-linux-gnu
+Copyright (C) 1988-2014 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+Reading makefiles...
+Reading makefile 'makefile'...
+Updating goal targets....
+Considering target file 'main'.
+  Considering target file 'main.o'.
+    Considering target file 'main.c'.
+     Finished prerequisites of target file 'main.c'.
+    No need to remake target 'main.c'.
+   Finished prerequisites of target file 'main.o'.
+   Prerequisite 'main.c' is older than target 'main.o'.
+  No need to remake target 'main.o'.
+  Considering target file 'foo.o'.
+    Considering target file 'foo.c'.
+     Finished prerequisites of target file 'foo.c'.
+    No need to remake target 'foo.c'.
+   Finished prerequisites of target file 'foo.o'.
+   Prerequisite 'foo.c' is older than target 'foo.o'.
+  No need to remake target 'foo.o'.
+  Considering target file 'bar.o'.
+    Considering target file 'bar.c'.
+     Finished prerequisites of target file 'bar.c'.
+    No need to remake target 'bar.c'.
+   Finished prerequisites of target file 'bar.o'.
+   Prerequisite 'bar.c' is older than target 'bar.o'.
+  No need to remake target 'bar.o'.
+ Finished prerequisites of target file 'main'.
+ Prerequisite 'main.o' is older than target 'main'.
+ Prerequisite 'foo.o' is older than target 'main'.
+ Prerequisite 'bar.o' is older than target 'main'.
+No need to remake target 'main'.
+make: 'main' is up to date.
+```
+
+可以看到，因为我们之前已经编译过了，所以此次编译并没有文件需要更新，而且`main`被我们指定了不用更新，所以这次啥也没干。
+
+我们再试试，修改`main.c`加个打印：
+
+```text
+#include<stdio.h>
+
+void main(int argc,char**argv)
+{
+    printf("enter main\r\n");
+    foo();
+    bar();
+
+    return 0;
+}
+```
+
+然后，再试下，预计是只更新`main.o`:
+
+```text
+   Considering target file 'main.c'.
+     Finished prerequisites of target file 'main.c'.
+    No need to remake target 'main.c'.
+   Finished prerequisites of target file 'main.o'.
+   Prerequisite 'main.c' is newer than target 'main.o'.
+  Must remake target 'main.o'.
+  ...
+ Prerequisite 'main.o' is newer than target 'main'.
+ Prerequisite 'foo.o' is older than target 'main'.
+ Prerequisite 'bar.o' is older than target 'main'.
+No need to remake target 'main'.
+```
+
+可以看到，确实如此，而且比较有意思的是，最后几行打印告诉我们，依赖`main.o`要比`main`新，但是仍然不用更新`main`,即使`main`并不存在。
+
+所以可以看到`-W`的作用，只是在最后要生成某个目标是忽略生成指令，而其并不会影响依赖的更新。
+
+[补充资料-`make`选项][material_make-options]到这里结束了，明天会整理成单独的一篇文章，因为实在是太长了/(ㄒoㄒ)/~~。
 
 ## 参考
 

@@ -1,17 +1,13 @@
 /*************************************************************************
-	> File Name: doc/example0/main.c
+	> File Name: doc/example0/bar.c
 	> Author:ddl 
 	> Mail:18899533550@163.com 
-	> Created Time: Fri Aug 30 00:37:02 2019
+	> Created Time: Fri Aug 30 00:41:28 2019
  ************************************************************************/
 
 #include<stdio.h>
 
-void main(int argc,char**argv)
+void bar()
 {
-    printf("enter main\r\n");
-    foo();
-    bar();
-
-    return 0;
+    printf("enter bar\r\n");
 }

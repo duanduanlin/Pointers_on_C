@@ -1,4 +1,5 @@
-main:main.o foo.o bar.o
+
+main:main.o fo.o bar.o
 	gcc -o main main.o foo.o bar.o
 
 main.o:main.c
