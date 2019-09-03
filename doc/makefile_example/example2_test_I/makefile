@@ -1,2 +1,2 @@
 
-include src.mk
+include build.mk 
