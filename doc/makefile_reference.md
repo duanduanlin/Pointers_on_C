@@ -528,14 +528,6 @@ gcc -o main main.o foo.o bar.o
 
 
 #### 补充材料
-<<<<<<< HEAD
-
-因为我也是新手，很多东西都不懂，所以在学习过程中遇到些新的概念什么的，如果内容比较多的话，我会专门抽出时间单独为其写篇文章。这是第一篇，[补充材料之`make`选项][make-options]。
-
-
-
-## `makefile`编写方法
-=======
 
 因为我也是新手，很多东西都不懂，所以在学习过程中遇到些新的概念什么的，如果内容比较多的话，我会专门抽出时间单独为其写篇文章。这是第一篇，[补充材料之`make`选项][make-options]。
 
@@ -543,11 +535,269 @@ gcc -o main main.o foo.o bar.o
 
 ## `makefile`编写方法
 
+下面我们按着计划，一步一步的完善我们的`makefile`。在开始之前呢！我们再看下关于依赖的定义：
 
+```text
+target...:prerequisites...
+	command
+	...
+	...
+```
+
+我们知道`make`执行时都是要检查目标依赖，然后决定是不是要执行指令。那么如果目标压根就没有依赖呢？我们先看个实例，然后对其执行过程进行分析。
+
+我们新建一个目录`example3`，然后在里面增加一个`makefile`，内容如下:
+
+```text
+$ cat makefile
+
+run:
+	@echo runing
+```
+
+可以看到，这里我们有一个目标`run`，其依赖为空，而且`run`是我们的最终目标。
+
+我们先`make`看看：
+
+```text
+$ make
+runing
+```
+
+可以看到，我们每次`make`都会打印`runing`，也就是`make`总是执行目标`run`的指令。
+
+然后我们加上`--debug=v`看下发生了什么：
+
+```text
+Reading makefiles...
+Reading makefile 'makefile'...
+Updating goal targets....
+Considering target file 'run'.
+ File 'run' does not exist.
+ Finished prerequisites of target file 'run'.
+Must remake target 'run'.
+runing
+Successfully remade target file 'run'.
+```
+
+通过输出信息，我们可以看到，`make`是先检查最终目标是不是存在，然后发现目标不存在，这个时候就已经可以判定命令是要执行了。之后继续检查所需依赖要不要更新，然后发现压根就没有依赖，所以`make`直接就执行命令了。
+
+然后，我们在目录下新建`run`，然后再试试：
+
+```text
+$ make --debug=v
+Reading makefiles...
+Reading makefile 'makefile'...
+Updating goal targets....
+Considering target file 'run'.
+ Finished prerequisites of target file 'run'.
+No need to remake target 'run'.
+make: 'run' is up to date.
+```
+
+和前面那个类似，这里也是先检查`run`是不是存在，不过和之前不一样的是，这里发现我最终目标已经存在了，然后`make`就要去检查其依赖是不是要更新，然后发现没有依赖，所以就不用更新了。
+
+通过前面这两个例子，我们可以看到，对于依赖为空的目标来说，如果目标本身不存在，那么`make`在检查目标时一定会执行其指令，而如果目标存在，则一定不会执行指令。利用这个再加上`make`本身支持的指定目标，我们可以让`make`去执行一些特定功能，就像脚本一样。
+
+
+
+### 增加清理功能
+
+下面我们为`makefile`增加清除功能。来删除中间文件，为了演示这个，我们从`example2`拷贝一份到`example3_test_clean`,并修改`makefile`，在末尾添加如下内容:
+
+```text
+
+clean:
+	rm *.o main
+```
+
+可以看到，这里我们添加了一个依赖为空的目标`clean`，而如果`clean`不存在的情况下，每次`make`去检查`clean`总是会执行其指令。即删除当前目录下`main`和所有`.o`文件。
+
+下面我们试试效果如何,首先先编译下。
+
+```text
+$ ls
+bar.c  bar.o  foo.c  foo.o  main  main.c  main.o  makefile
+```
+
+你会看到目录下多了一些文件，然后`make clean`。
+
+```text
+$ make clean
+rm *.o main
+
+$ ls
+bar.c  foo.c  main.c  makefile
+```
+
+你会看到，当你指定`make`的目标为`clean`时，就可以执行`clean`下的指令了，而且当前目录下的相关文件也确实删掉了。
+
+但是这样的话，有一个前提条件是`makefile`的同级目录下，不能有和`clean`重名的文件(文件夹也不行，因为`make`并不会管你目标是什么)。
+
+好在，针对这种情况`make`工具专门提供了规则来规避目标检查，那就是伪目标，规则如下：
+
+```
+.PHONY:target
+```
+
+可以看到伪目标其实就是一个依赖关系，其目标是`make`内置目标`.PHONY`，依赖就是你想要设置的目标。这样`make`在执行时就会知道这个目标是伪目标从而忽略对其的检查，直接执行其指令。
+
+我们先把`clean`变成伪目标。
+
+```text
+.PHONY:clean
+clean:
+	rm *.o main
+```
+
+然后加上`--debug=v`，看看`make`执行时干了什么：
+
+```text
+$ make --debug=v clean
+Reading makefiles...
+Reading makefile 'makefile'...
+Updating goal targets....
+Considering target file 'clean'.
+ File 'clean' does not exist.
+ Finished prerequisites of target file 'clean'.
+Must remake target 'clean'.
+rm *.o main
+Successfully remade target file 'clean'.
+```
+
+好像看不出来，我们在当前目录下新建个`clean`文件试试。
+
+```text
+$ make --debug=v clean
+Reading makefiles...
+Reading makefile 'makefile'...
+Updating goal targets....
+Considering target file 'clean'.
+ File 'clean' does not exist.
+ Finished prerequisites of target file 'clean'.
+Must remake target 'clean'.
+rm *.o main
+Successfully remade target file 'clean'.
+```
+
+可以看到，虽然目录下已经有了`clean`，但`make`还是提示说`clean`不存在。这就是伪目标的作用了，就是告诉`make`这不是个真正的目标，你不用检查它，直接执行指令就好了。
+
+到此我们为`makefile`增加了`clean`功能，但是考虑一下，其实有时候我们并不希望删除我们的可执行程序，而是像保留它，仅仅把比较杂乱的中间文件删掉。
+
+```text
+.PHONY:cleanall cleanobj
+
+cleanall:
+	rm *.o main
+
+cleanobj:
+	rm *.o
+```
+
+要实现有选择的删除某些文件，你可以像上面这样，定义两个伪目标，分别执行你要删除的操作。但是你会发现，这两个命令之间其实是有重合的。所以我们可以利用依赖检查可能会更新依赖，把重合的部分抽出来作为一个伪目标的依赖。这样每当伪目标执行时，都会去检查依赖，如果此时依赖也是伪目标的话，那不就可以执行重合的功能了吗，然后因为目标本身也是伪目标，所以同时也会执行目标本身的指令。就像下面这样。
+
+```text
+.PHONY:cleanall cleanobj
+
+cleanall:cleanobj
+	rm main
+
+cleanobj:
+	rm *.o
+```
+
+现在，我们的清除功能是比较完善了。但是考虑这样一种情况，如果我在执行`cleanall`之前，先执行了`cleanobj`会怎样？
+
+```text
+$ make cleanall
+rm *.o
+rm: cannot remove '*.o': No such file or directory
+makefile:19: recipe for target 'cleanobj' failed
+make: *** [cleanobj] Error 1
+```
+
+你会发现，因为`.o`文件已经不存在了，这是你去执行`cleanall`它会因找不到`.o`而报错。而此时`rm main`是没有执行的。也就是我们想删除的东西其实是没删完的。
+
+还记得`make`选项里的`-k`选项吗？它会告诉`make`忽略错误继续执行，我们试试这里可不可以。
+
+```text
+$ make -k cleanall
+rm *.o
+rm: cannot remove '*.o': No such file or directory
+makefile:19: recipe for target 'cleanobj' failed
+make: *** [cleanobj] Error 1
+make: Target 'cleanall' not remade because of errors.
+```
+
+我们发现并不行，这是因为如果中间出错，最终目标是不会更新的，这里也就意味着`cleanall`的命令并不会执行。其实这里我们可以直接在`rm`前加个`-`表示忽略命令执行错误。
+
+```text
+.PHONY:cleanall cleanobj
+
+cleanall:cleanobj
+	-rm main
+
+cleanobj:
+	-rm *.o
+```
+
+效果如下：
+
+```text
+$ make cleanall
+rm *.o
+rm: cannot remove '*.o': No such file or directory
+makefile:19: recipe for target 'cleanobj' failed
+make: [cleanobj] Error 1 (ignored)
+rm main
+```
+
+嗯，现在我们的删除功能就比较完善了。
+
+
+
+#### 补充资料
+
+嗯又到了该充电的时候，上面有学习到伪目标(`.PHONY`),其实它是`make`的内置目标。下面我们就看看`make`有那些内置目标，以及都有什么用吧！这是第二篇，[补充资料-`make`内置目标][builtin-targets]。
+
+
+
+### 分离源码和中间文件
+
+现在考虑这个问题，就是如果我文件比较多的话，最好把生成的中间文件单独放起来，不然混在一起的话会非常混乱。下面看看该怎么做。
+
+首先还是先从`example3_test_clean`拷贝一份到`example3_test_detach`，然后我们新建一个`obj`目录来存放中间文件。下面考虑该怎么把所有`*.o`都放到`obj`目录中去，很容易想到的办法就是使用`.o`时连带着路径呗！就像下面这样：
+
+```test
+$ cat makefile
+main:obj/main.o obj/foo.o obj/bar.o
+	gcc -o main obj/main.o obj/foo.o obj/bar.o
+
+obj/main.o:main.c
+	gcc -c main.c -o obj/main.o
+
+obj/foo.o:foo.c
+	gcc -c foo.c -o obj/foo.o
+
+obj/bar.o:bar.c
+	gcc -c bar.c -o obj/bar.o
+
+.PHONY:cleanall cleanobj
+
+cleanall:cleanobj
+	-rm main
+
+cleanobj:
+	-rm obj/*.o
+```
+
+然后编译下，发现确实可以。但是这也太麻烦了。
 
 ## 参考
 
 [chain]: img/dependent_chain.png
 
 [make-options]: makefile_make-options.md
+
+[builtin-targets]: makefile_builtin-targets
 
