@@ -786,3 +786,13 @@ this is a file
 
 ## `.POSIX`-兼容`POSIX`标准
 
+
+
+## 参考
+
+[跟我一起写 Makefile](https://www.cnblogs.com/BigBang/articles/403511.html)
+
+[`GNU make`](http://www.gnu.org/software/make/manual/make.html)
+
+[pointers_on_c]:https://github.com/duanduanlin/Pointers_on_C "pointers_on_c"
+
