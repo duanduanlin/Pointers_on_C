@@ -43,6 +43,7 @@ include ./src/helloworld/helloworld.mk		#取消屏蔽来选择工程
 -   [x] [文档撰写之`Markdown`][Markdown]
 -   [ ] [自动化编译之`makefile`][makefile_reference]
     -   [x] [`make`选项][make-options]
+    -   [ ] [`make`内置目标][builtin_target]
 -   [ ] 脚步语言之`bash shell`
 -   [ ] 项目管理之`menuconfig`
 -   [ ] 代码管理之`git`
@@ -76,4 +77,6 @@ include ./src/helloworld/helloworld.mk		#取消屏蔽来选择工程
 [makefile_reference]: doc/makefile_reference.md "makefile reference"
 
 [make-options]: doc/makefile_make-options.md
+
+[builtin_target]: doc/makefile_builtin-targets.md
 
